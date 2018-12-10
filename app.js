@@ -21,7 +21,6 @@ var budgetModel = (() => {
         this.description = description;
         this.value = value;
     };
-
     var data = {
         items: {
             exp: [],
@@ -31,6 +30,15 @@ var budgetModel = (() => {
             exp: 0,
             inc: 0,
         },
+        budget: 0,
+        percentage: -1
+    };
+    var calculateTotal = (type) => {
+        var sum = 0;
+        data.items[type].forEach(item => {
+            sum += item.value;
+        });
+        data.totals[type] = sum;
     };
 
     return {
@@ -52,10 +60,34 @@ var budgetModel = (() => {
             data.items[type].push(newItem);
             return newItem;
         },
+
         getData: () => {
             return data;
+        },
+
+        calculateBudget: () => {
+            // Calculate total income and expense
+            calculateTotal('inc');
+            calculateTotal('exp');
+            // Calculate the budget: income - expense
+            data.budget = data.totals.inc - data.totals.exp;
+            // Calculate the percentage we spent
+            if (data.totals.inc > 0) {
+                data.percentage = Math.round((data.totals.exp / data.totals.inc) * 100);
+            } else {
+                data.percentage = -1;
+            }
+        },
+
+        getBudget: () => {
+            return {
+                budget: data.budget,
+                totalInc: data.totals.inc,
+                totalExp: data.totals.exp,
+                percentage: data.percentage
+            }
         }
-    };
+    }
 })();
 
 var budgetView = (() => {
@@ -65,7 +97,11 @@ var budgetView = (() => {
         inputDescription: '.add__description',
         inputValue: '.add__value',
         incomeContainer: '.income__list',
-        expenseContainer: '.expenses__list'
+        expenseContainer: '.expenses__list',
+        budgetValue: '.budget__value',
+        incomeValue: '.budget__income--value',
+        expenseValue: '.budget__expenses--value',
+        percentageValue: '.budget__expenses--percentage',
     };
 
     return {
@@ -77,7 +113,7 @@ var budgetView = (() => {
             return {
                 type: document.querySelector(DOMStrings.inputType).value, // ==> 'inc' or 'exp'
                 description: document.querySelector(DOMStrings.inputDescription).value,
-                value: document.querySelector(DOMStrings.inputValue).value,
+                value: parseFloat(document.querySelector(DOMStrings.inputValue).value)
             };
         },
 
@@ -114,21 +150,62 @@ var budgetView = (() => {
             newHTML = newHTML.replace('%value%', obj.value);
 
             document.querySelector(element).insertAdjacentHTML('beforeend', newHTML);
+        },
+
+        clearFields: () => {
+            var fields, fieldsArray;
+            fields = document.querySelectorAll(DOMStrings.inputDescription + ', '
+                + DOMStrings.inputValue); // Return a NodeList
+
+            fieldsArray = Array.prototype.slice.call(fields);
+            fieldsArray.forEach((cur) => {
+                cur.value = '';
+            });
+            fieldsArray[0].focus();
+        },
+
+        displayBudget: (obj) => {
+            document.querySelector(DOMStrings.budgetValue).textContent = obj.budget;
+            document.querySelector(DOMStrings.incomeValue).textContent = obj.totalInc;
+            document.querySelector(DOMStrings.expenseValue).textContent = obj.totalExp;
+            document.querySelector(DOMStrings.percentageValue).textContent = obj.percentage;
+
+            if(obj.percentage > 0) {
+                document.querySelector(DOMStrings.percentageValue).textContent = obj.percentage + '%';
+            } else {
+                document.querySelector(DOMStrings.percentageValue).textContent = '---';
+            }
         }
     };
 })();
 
 var budgetController = ((model, view) => {
+
+    var ctrUpdateItem = () => {
+        // 1. Calculate budget
+        model.calculateBudget();
+        // 2. Return the budget
+        var budget = model.getBudget();
+        // 3. Display budget
+        view.displayBudget(budget);
+
+    };
+
     var ctrAddItem = () => {
+        var input, item;
         // 1. Get input data
-        var input = view.getInput();
-        // 2. Add the item to budget model
-        var item = model.addItem(input.type, input.description, input.value);
-        console.log(model.getData());
-        // 3. Add the item to view
-        view.addListItem(item, input.type);
-        // 4. Calculate data
-        // 5. Display
+        input = view.getInput();
+
+        if (input.description !== '' && !isNaN(input.value) && input.value > 0) {
+            // 2. Add the item to budget model
+            item = model.addItem(input.type, input.description, input.value);
+            // 3. Add the item to view
+            view.addListItem(item, input.type);
+            // 4. Clear fields
+            view.clearFields();
+            // 5. Calculate and update
+            ctrUpdateItem();
+        }
     };
 
     var setUpEventListeners = () => {
@@ -146,10 +223,13 @@ var budgetController = ((model, view) => {
     return {
         init: () => {
             console.log('Application is started! \n --------------------');
+            view.displayBudget({
+                budget: 0,
+                totalInc: 0,
+                totalExp: 0,
+                percentage: -1
+            });
             setUpEventListeners();
-        },
-        test: () => {
-            ctrAddItem();
         }
     };
 })(budgetModel, budgetView);
